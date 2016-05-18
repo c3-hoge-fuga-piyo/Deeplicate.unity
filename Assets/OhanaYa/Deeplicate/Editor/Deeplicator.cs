@@ -23,86 +23,86 @@ namespace OhanaYa.Deeplicate
             var pairs = new List<CopyAssetPathPair>();
             var sources = Selection.GetFiltered(typeof(Object), SelectionMode.DeepAssets);
 
-                // Copy assets.
-                foreach (var path in selectedPaths)
+            // Copy assets.
+            foreach (var path in selectedPaths)
+            {
+                var newPath = AssetDatabase.GenerateUniqueAssetPath(path);
+
+                if (AssetDatabase.CopyAsset(path, newPath))
                 {
-                    var newPath = AssetDatabase.GenerateUniqueAssetPath(path);
-
-                    if (AssetDatabase.CopyAsset(path, newPath))
-                    {
-                        pairs.Add(new CopyAssetPathPair{
-                            SourcePath = path,
-                            DestinationPath = newPath});
-                    }
-                    else
-                    {
-                        Debug.LogError("Failed to copy file: " + path);
-                    }
-
+                    pairs.Add(new CopyAssetPathPair{
+                        SourcePath = path,
+                        DestinationPath = newPath});
+                }
+                else
+                {
+                    Debug.LogError("Failed to copy file: " + path);
                 }
 
-                var destinationPaths = pairs.Select(p => p.DestinationPath);
+            }
 
-                // Import copied assets.
-                foreach (var path in destinationPaths)
+            var destinationPaths = pairs.Select(p => p.DestinationPath);
+
+            // Import copied assets.
+            foreach (var path in destinationPaths)
+            {
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ImportRecursive);
+            }
+
+            // Find references.
+            foreach (var pair in pairs.Where(p => AssetDatabase.IsValidFolder(p.SourcePath)))
+            {
+                var src = pair.SourcePath;
+                var dst = pair.DestinationPath;
+
+                var copiedObjectPaths = AssetDatabase
+                    .FindAssets(filter: "t:Object", searchInFolders: new string[]{dst})
+                    .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
+                    .Where(path => !AssetDatabase.IsValidFolder(path));
+
+                // Replace references.
+                foreach (var path in copiedObjectPaths)
                 {
-                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ImportRecursive);
-                }
+                    var copiedObject = AssetDatabase.LoadAssetAtPath<GameObject>(path);
 
-                // Find references.
-                foreach (var pair in pairs.Where(p => AssetDatabase.IsValidFolder(p.SourcePath)))
-                {
-                    var src = pair.SourcePath;
-                    var dst = pair.DestinationPath;
+                    var serializedObjects = (copiedObject != null)
+                        ? copiedObject
+                            .GetComponentsInChildren<Component>(includeInactive: true)
+                            .Select(x => new SerializedObject(x))
+                        : AssetDatabase.LoadAllAssetsAtPath(path)
+                            .Select(x => new SerializedObject(x));
 
-                    var copiedObjectPaths = AssetDatabase
-                        .FindAssets(filter: "t:Object", searchInFolders: new string[]{dst})
-                        .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                        .Where(path => !AssetDatabase.IsValidFolder(path));
-
-                    // Replace references.
-                    foreach (var path in copiedObjectPaths)
+                    foreach (var serializedObject in serializedObjects)
                     {
-                        var copiedObject = AssetDatabase.LoadAssetAtPath<Object>(path);
+                        var iterator = serializedObject.GetIterator();
 
-                        var serializedObjects = (copiedObject is GameObject)
-                            ? ((GameObject)copiedObject)
-                                .GetComponentsInChildren<Component>(includeInactive: true)
-                                .Select(x => new SerializedObject(x))
-                                .ToArray()
-                            : new SerializedObject[]{new SerializedObject(copiedObject)};
-
-                        foreach (var serializedObject in serializedObjects)
+                        while (iterator.NextVisible(enterChildren: true))
                         {
-                            var iterator = serializedObject.GetIterator();
+                            var type = iterator.propertyType;
+                            if (type != SerializedPropertyType.ObjectReference) continue;
 
-                            while (iterator.NextVisible(enterChildren: true))
-                            {
-                                var type = iterator.propertyType;
-                                if (type != SerializedPropertyType.ObjectReference) continue;
+                            var objectReference = iterator.objectReferenceValue;
+                            if (objectReference == null || !sources.Contains(objectReference)) continue;
 
-                                var objectReference = iterator.objectReferenceValue;
-                                if (objectReference == null || !sources.Contains(objectReference)) continue;
+                            var sourcePath = AssetDatabase.GetAssetPath(objectReference);
+                            Assert.IsTrue(sourcePath.StartsWith(src));
 
-                                var sourcePath = AssetDatabase.GetAssetPath(objectReference);
-                                Assert.IsTrue(sourcePath.StartsWith(src));
+                            var destinationPath = dst + sourcePath.Substring(src.Length);
+                            var copiedObjectReference = AssetDatabase.LoadAssetAtPath<Object>(destinationPath);
+                            Assert.IsNotNull(copiedObjectReference);
 
-                                var destinationPath = dst + sourcePath.Substring(src.Length);
-                                var copiedObjectReference = AssetDatabase.LoadAssetAtPath<Object>(destinationPath);
-                                Assert.IsNotNull(copiedObjectReference);
-
-                                iterator.objectReferenceValue = copiedObjectReference;
-                            }
-
-                            serializedObject.ApplyModifiedProperties();
+                            iterator.objectReferenceValue = copiedObjectReference;
                         }
+
+                        serializedObject.ApplyModifiedProperties();
                     }
                 }
+            }
 
-                // Save changes.
-                AssetDatabase.SaveAssets();
+            // Save changes.
+            AssetDatabase.SaveAssets();
 
-                Selection.objects = destinationPaths.Select(path => AssetDatabase.LoadAssetAtPath<Object>(path)).ToArray();
+            Selection.objects = destinationPaths.Select(path => AssetDatabase.LoadAssetAtPath<Object>(path)).ToArray();
         }
 
         [MenuItem("Assets/Deeplicate %#d", true)]
