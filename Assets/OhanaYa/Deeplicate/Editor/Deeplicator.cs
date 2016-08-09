@@ -38,7 +38,6 @@ namespace OhanaYa.Deeplicate
                 {
                     Debug.LogError("Failed to copy file: " + path);
                 }
-
             }
 
             var destinationPaths = pairs.Select(p => p.DestinationPath);
@@ -108,7 +107,7 @@ namespace OhanaYa.Deeplicate
         [MenuItem("Assets/Deeplicate %#d", true)]
         static bool ValidateDeeplicate()
         {
-            return Selection.assetGUIDs != null && Selection.assetGUIDs.Length > 0;
+            return Selection.objects.All(AssetDatabase.Contains);
         }
     }
 }
