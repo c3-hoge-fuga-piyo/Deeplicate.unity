@@ -4,6 +4,10 @@
 
 アセットをディレクトリ単位でコピーした際に、コピー元のアセットを参照してしまうお悩みを解決するヤーツ
 
+## Requirement
+
+Unity 5.4 or later
+
 ## Usage
 
 1. コピーしたいディレクトリを選択し「Assets/Deeplicate」を実行する
