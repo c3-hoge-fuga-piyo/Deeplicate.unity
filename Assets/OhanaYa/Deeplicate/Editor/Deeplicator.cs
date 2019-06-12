@@ -1,99 +1,260 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEditor;
 
+using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 
-namespace OhanaYa.Deeplicate
+namespace OhanaYa
 {
+    using Array = System.Array;
+
     public static class Deeplicator
     {
+        const string MenuItemName = "Assets/Deeplicate %#d";
+
         struct CopyAssetPathPair
         {
             public string SourcePath;
             public string DestinationPath;
         }
 
-        [MenuItem("Assets/Deeplicate %#d")]
+        [MenuItem(MenuItemName)]
         static void Deeplicate()
         {
-            var selecteds = Selection.objects;
-            var selectedPaths = selecteds.Select(x => AssetDatabase.GetAssetPath(x));
+            AssetDatabase.Refresh();
+
+            var selectedObjects = Selection.objects;
+            var selectedAssetPaths = selectedObjects.Select(x => AssetDatabase.GetAssetPath(x));
             var pairs = new List<CopyAssetPathPair>();
-            var sources = Selection.GetFiltered(typeof(Object), SelectionMode.DeepAssets);
 
             // Copy assets.
-            foreach (var path in selectedPaths)
+            foreach (var path in selectedAssetPaths)
             {
                 var newPath = AssetDatabase.GenerateUniqueAssetPath(path);
 
                 if (AssetDatabase.CopyAsset(path, newPath))
                 {
-                    pairs.Add(new CopyAssetPathPair{
+                    pairs.Add(new CopyAssetPathPair
+                    {
                         SourcePath = path,
-                        DestinationPath = newPath});
-                }
-                else
-                {
-                    Debug.LogError("Failed to copy file: " + path);
+                        DestinationPath = newPath,
+                    });
                 }
             }
-
-            var destinationPaths = pairs.Select(p => p.DestinationPath);
 
             // Import copied assets.
-            foreach (var path in destinationPaths)
-            {
-                AssetDatabase.ImportAsset(path, ImportAssetOptions.ImportRecursive);
-            }
+            AssetDatabase.Refresh();
 
-            // Find references.
-            foreach (var pair in pairs.Where(p => AssetDatabase.IsValidFolder(p.SourcePath)))
+            // Replace object references.
+            var sourceFolderPaths = selectedAssetPaths.Where(AssetDatabase.IsValidFolder);
+            var sourceFilePaths = selectedAssetPaths.Except(sourceFolderPaths);
+
+            foreach (var pair in pairs)
             {
                 var src = pair.SourcePath;
                 var dst = pair.DestinationPath;
+                var isCopyFolder = AssetDatabase.IsValidFolder(src);
 
-                var copiedObjectPaths = AssetDatabase
-                    .FindAssets(filter: "t:Object", searchInFolders: new string[]{dst})
-                    .Select(guid => AssetDatabase.GUIDToAssetPath(guid))
-                    .Where(path => !AssetDatabase.IsValidFolder(path));
+                var copiedAssetPaths = isCopyFolder
+                    ? AssetDatabase
+                        .FindAssets(filter: "t:Object", searchInFolders: new[] { dst })
+                        .Select(x => AssetDatabase.GUIDToAssetPath(x))
+                        .Where(path => !AssetDatabase.IsValidFolder(path))
+                    : new[] { dst };
 
-                // Replace references.
-                foreach (var path in copiedObjectPaths)
+                foreach (var copiedAssetPath in copiedAssetPaths)
                 {
-                    var copiedObject = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    var copiedSerializedObjects = AssetDatabase
+                        .LoadAllAssetsAtPath(copiedAssetPath)
+                        .Select(x => new SerializedObject(x));
 
-                    var serializedObjects = (copiedObject != null)
-                        ? copiedObject
-                            .GetComponentsInChildren<Component>(includeInactive: true)
-                            .Select(x => new SerializedObject(x))
-                        : AssetDatabase.LoadAllAssetsAtPath(path)
-                            .Select(x => new SerializedObject(x));
-
-                    foreach (var serializedObject in serializedObjects)
+                    foreach (var copiedSerializedObject in copiedSerializedObjects)
                     {
-                        var iterator = serializedObject.GetIterator();
+                        var iterator = copiedSerializedObject.GetIterator();
 
-                        while (iterator.NextVisible(enterChildren: true))
+                        // Include HideInInspector properties.
+                        while (iterator.Next(enterChildren: true))
                         {
-                            var type = iterator.propertyType;
-                            if (type != SerializedPropertyType.ObjectReference) continue;
+                            var propertyType = iterator.propertyType;
+                            if (propertyType != SerializedPropertyType.ObjectReference)
+                            {
+                                continue;
+                            }
 
                             var objectReference = iterator.objectReferenceValue;
-                            if (objectReference == null || !sources.Contains(objectReference)) continue;
+                            if (objectReference == null)
+                            {
+                                continue;
+                            }
 
-                            var sourcePath = AssetDatabase.GetAssetPath(objectReference);
-                            Assert.IsTrue(sourcePath.StartsWith(src));
+                            var sourceAssetPath = AssetDatabase.GetAssetPath(objectReference);
+                            var isFile = sourceFilePaths.Contains(sourceAssetPath);
+                            var folders = sourceFolderPaths.Where(x => sourceAssetPath.StartsWith(x + "/"));
+                            var isInFolder = folders.Any();
+                            if (!(isFile || isInFolder))
+                            {
+                                continue;
+                            }
 
-                            var destinationPath = dst + sourcePath.Substring(src.Length);
-                            var copiedObjectReference = AssetDatabase.LoadAssetAtPath<Object>(destinationPath);
-                            Assert.IsNotNull(copiedObjectReference);
+                            var destinationAssetPath = "";
 
-                            iterator.objectReferenceValue = copiedObjectReference;
+                            if (isCopyFolder && sourceAssetPath.StartsWith(src + "/"))
+                            {
+                                destinationAssetPath = dst + sourceAssetPath.Substring(src.Length);
+                            }
+                            else if (isCopyFolder && isInFolder)
+                            {
+                                var srcFolders = sourceFolderPaths.Where(x => src.StartsWith(x + "/"));
+                                var commonFolders = folders.Intersect(srcFolders);
+                                var sourceFolderPath = (commonFolders.Any() ? commonFolders : folders).Min(); // Shortest match path
+                                var destinationFolderPath = pairs.Find(x => x.SourcePath == sourceFolderPath).DestinationPath;
+
+                                destinationAssetPath = destinationFolderPath + sourceAssetPath.Substring(sourceFolderPath.Length);
+                            }
+                            else
+                            {
+                                if (isFile)
+                                {
+                                    destinationAssetPath = pairs.Find(x => x.SourcePath == sourceAssetPath).DestinationPath;
+                                }
+                                else
+                                {
+                                    var sourceFolderPath = folders.Max(); // Longest match path
+                                    var destinationFolderPath = pairs.Find(x => x.SourcePath == sourceFolderPath).DestinationPath;
+
+                                    destinationAssetPath = destinationFolderPath + sourceAssetPath.Substring(sourceFolderPath.Length);
+                                }
+                            }
+                            var destinationAsset = AssetDatabase.LoadAssetAtPath<Object>(destinationAssetPath);
+                            if (destinationAsset == null)
+                            {
+                                continue;
+                            }
+
+                            var isMainAsset = AssetDatabase.IsMainAsset(objectReference);
+
+                            if (isMainAsset)
+                            {
+                                iterator.objectReferenceValue = destinationAsset;
+                            }
+                            else
+                            {
+                                var sourceType = objectReference.GetType();
+                                var sourceName = objectReference.name;
+
+                                var destinationSubAssets = AssetDatabase
+                                    .LoadAllAssetsAtPath(destinationAssetPath)
+                                    .Where(x => !AssetDatabase.IsMainAsset(x)) // Attached Component is not SubAsset.
+                                    .Where(x => x.GetType() == sourceType);
+
+                                var nameMatches = destinationSubAssets.Where(x => x.name == sourceName);
+                                var nameMatchCount = nameMatches.Count();
+                                Assert.IsTrue(nameMatchCount > 0);
+                                if (nameMatchCount == 1)
+                                {
+                                    iterator.objectReferenceValue = nameMatches.First();
+                                }
+                                else
+                                {
+                                    var sourceMainAsset = AssetDatabase.LoadAssetAtPath<Object>(AssetDatabase.GetAssetPath(objectReference));
+                                    Assert.IsNotNull(sourceMainAsset);
+
+                                    var sourceAncestors = ProjectWindowUtil.GetAncestors(objectReference.GetInstanceID())
+                                        .Except(ProjectWindowUtil.GetAncestors(sourceMainAsset.GetInstanceID()));
+                                    var sourceAncestorObjects = sourceAncestors.Select(x => EditorUtility.InstanceIDToObject(x));
+                                    var sourceFullName = string.Format(
+                                        "{0}/{1}",
+                                        sourceAncestorObjects
+                                            .Reverse()
+                                            .Select(x => x.name)
+                                            .Aggregate((sum, x) => string.Format("{0}/{1}", sum, x)),
+                                        sourceName);
+                                    var destinationAncestors = ProjectWindowUtil.GetAncestors(destinationAsset.GetInstanceID());
+
+                                    var fullNameMatches = destinationSubAssets
+                                        .Select(asset => new
+                                        {
+                                            asset,
+                                            fullName = string.Format(
+                                                "{0}/{1}",
+                                                ProjectWindowUtil
+                                                    .GetAncestors(asset.GetInstanceID())
+                                                    .Except(destinationAncestors)
+                                                    .Select(x => EditorUtility.InstanceIDToObject(x))
+                                                    .Reverse()
+                                                    .Select(x => x.name)
+                                                    .Aggregate((sum, x) => string.Format("{0}/{1}", sum, x)),
+                                                asset.name)
+                                        })
+                                        .Where(x => x.fullName == sourceFullName);
+                                    var fullNameMatchCount = fullNameMatches.Count();
+                                    Assert.IsTrue(fullNameMatchCount > 0);
+                                    if (fullNameMatchCount == 1)
+                                    {
+                                        iterator.objectReferenceValue = fullNameMatches.First().asset;
+                                    }
+                                    else
+                                    {
+                                        if (objectReference is GameObject)
+                                        {
+                                            var destinationGameObjects = fullNameMatches
+                                                .Select(x => x.asset)
+                                                .Cast<GameObject>();
+
+                                            var gameObjectReference = (GameObject)objectReference;
+                                            var sourceSiblingIndices = gameObjectReference
+                                                .GetComponentsInParent<Transform>(includeInactive: true)
+                                                .Select(x => x.GetSiblingIndex());
+
+                                             var destinationGameObject = destinationGameObjects
+                                                .First(x => x
+                                                    .GetComponentsInParent<Transform>()
+                                                    .Select(t => t.GetSiblingIndex())
+                                                    .SequenceEqual(sourceSiblingIndices));
+                                            Assert.IsNotNull(destinationGameObject);
+
+                                            iterator.objectReferenceValue = destinationGameObject;
+                                        }
+                                        else if (objectReference is Component)
+                                        {
+                                            var destinationGameObjects = fullNameMatches
+                                                .Select(x => x.asset)
+                                                .Cast<Component>()
+                                                .Select(x => x.gameObject);
+
+                                            var componentReference = (Component)objectReference;
+                                            var sourceSiblingIndices = componentReference
+                                                .GetComponentsInParent<Transform>(includeInactive: true)
+                                                .Select(x => x.GetSiblingIndex());
+                                            var sourceComponentIndex = Array.IndexOf(componentReference.gameObject.GetComponents(sourceType), componentReference);
+                                            Assert.IsTrue(sourceComponentIndex >= 0);
+
+                                            var destinationGameObject = destinationGameObjects
+                                                .First(x => x
+                                                    .GetComponentsInParent<Transform>()
+                                                    .Select(t => t.GetSiblingIndex())
+                                                    .SequenceEqual(sourceSiblingIndices));
+                                            Assert.IsNotNull(destinationGameObject);
+
+                                            var destinationComponent = destinationGameObject.GetComponents(sourceType)[sourceComponentIndex];
+                                            Assert.IsNotNull(destinationComponent);
+
+                                            iterator.objectReferenceValue = destinationComponent;
+                                        }
+                                        else
+                                        {
+                                            // Other assets.
+
+                                            // TODO
+                                        }
+                                    }
+                                }
+                            }
                         }
 
-                        serializedObject.ApplyModifiedProperties();
+                        copiedSerializedObject.ApplyModifiedPropertiesWithoutUndo();
                     }
                 }
             }
@@ -101,10 +262,13 @@ namespace OhanaYa.Deeplicate
             // Save changes.
             AssetDatabase.SaveAssets();
 
-            Selection.objects = destinationPaths.Select(path => AssetDatabase.LoadAssetAtPath<Object>(path)).ToArray();
+            Selection.objects = pairs
+                .Select(p => p.DestinationPath)
+                .Select(x => AssetDatabase.LoadAssetAtPath<Object>(x))
+                .ToArray();
         }
 
-        [MenuItem("Assets/Deeplicate %#d", true)]
+        [MenuItem(MenuItemName, true)]
         static bool ValidateDeeplicate()
         {
             return Selection.objects.All(AssetDatabase.Contains);
