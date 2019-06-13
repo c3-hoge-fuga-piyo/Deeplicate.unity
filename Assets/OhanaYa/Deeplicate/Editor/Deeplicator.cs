@@ -67,6 +67,7 @@ namespace OhanaYa
                 {
                     var copiedSerializedObjects = AssetDatabase
                         .LoadAllAssetsAtPath(copiedAssetPath)
+                        .Where(x => x != null) // Ignore broken assets.
                         .Select(x => new SerializedObject(x));
 
                     foreach (var copiedSerializedObject in copiedSerializedObjects)
