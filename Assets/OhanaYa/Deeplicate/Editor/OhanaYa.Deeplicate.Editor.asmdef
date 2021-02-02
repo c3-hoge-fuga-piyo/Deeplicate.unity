@@ -1,0 +1,16 @@
+{
+    "name": "OhanaYa.Deeplicate.Editor",
+    "rootNamespace": "OhanaYa.Deeplicate",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
