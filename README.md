@@ -2,7 +2,7 @@
 
 [![Unity 5.4+](https://img.shields.io/badge/unity-5.4+-000.svg?style=flat-square&logo=unity)](https://unity3d.com/get-unity/download/archive)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Releases](https://img.shields.io/github/release/c3-hoge-fuga-piyo/Deeplicate.unity.svg?style=flat-square)](https://github.com/3-hoge-fuga-piyo/Deeplicate.unity/releases)
+[![Releases](https://img.shields.io/github/release/c3-hoge-fuga-piyo/Deeplicate.unity.svg?style=flat-square)](https://github.com/c3-hoge-fuga-piyo/Deeplicate.unity/releases)
 
 
 アセットをディレクトリ単位でコピーした際に、コピー元のアセットを参照してしまうお悩みを解決するヤーツ
