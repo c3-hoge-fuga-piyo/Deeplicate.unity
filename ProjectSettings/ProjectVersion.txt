@@ -1,2 +1,2 @@
-m_EditorVersion: 5.4.0b17
-m_StandardAssetsVersion: 0
+m_EditorVersion: 2021.1.0b4
+m_EditorVersionWithRevision: 2021.1.0b4 (6d90c0720bd4)
