@@ -77,13 +77,15 @@ namespace OhanaYa
                         // Include HideInInspector properties.
                         while (iterator.Next(enterChildren: true))
                         {
-                            var propertyType = iterator.propertyType;
+                            var targetProperty = iterator;
+
+                            var propertyType = targetProperty.propertyType;
                             if (propertyType != SerializedPropertyType.ObjectReference)
                             {
                                 continue;
                             }
 
-                            var objectReference = iterator.objectReferenceValue;
+                            var objectReference = targetProperty.objectReferenceValue;
                             if (objectReference == null)
                             {
                                 continue;
@@ -137,7 +139,7 @@ namespace OhanaYa
 
                             if (isMainAsset)
                             {
-                                iterator.objectReferenceValue = destinationAsset;
+                                targetProperty.objectReferenceValue = destinationAsset;
                             }
                             else
                             {
@@ -154,7 +156,7 @@ namespace OhanaYa
                                 Assert.IsTrue(nameMatchCount > 0);
                                 if (nameMatchCount == 1)
                                 {
-                                    iterator.objectReferenceValue = nameMatches.First();
+                                    targetProperty.objectReferenceValue = nameMatches.First();
                                 }
                                 else
                                 {
@@ -193,7 +195,7 @@ namespace OhanaYa
                                     Assert.IsTrue(fullNameMatchCount > 0);
                                     if (fullNameMatchCount == 1)
                                     {
-                                        iterator.objectReferenceValue = fullNameMatches.First().asset;
+                                        targetProperty.objectReferenceValue = fullNameMatches.First().asset;
                                     }
                                     else
                                     {
@@ -215,7 +217,7 @@ namespace OhanaYa
                                                     .SequenceEqual(sourceSiblingIndices));
                                             Assert.IsNotNull(destinationGameObject);
 
-                                            iterator.objectReferenceValue = destinationGameObject;
+                                            targetProperty.objectReferenceValue = destinationGameObject;
                                         }
                                         else if (objectReference is Component)
                                         {
@@ -241,7 +243,7 @@ namespace OhanaYa
                                             var destinationComponent = destinationGameObject.GetComponents(sourceType)[sourceComponentIndex];
                                             Assert.IsNotNull(destinationComponent);
 
-                                            iterator.objectReferenceValue = destinationComponent;
+                                            targetProperty.objectReferenceValue = destinationComponent;
                                         }
                                         else
                                         {
