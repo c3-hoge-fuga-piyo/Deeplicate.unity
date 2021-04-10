@@ -248,6 +248,7 @@ namespace OhanaYa
                                             // Other assets.
 
                                             // TODO
+                                            Debug.LogWarning($"Ambiguous {objectReference.GetType().FullName} is not supported.");
                                         }
                                     }
                                 }
