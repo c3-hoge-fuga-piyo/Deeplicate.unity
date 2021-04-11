@@ -11,6 +11,7 @@ namespace OhanaYa
 
     public static class Deeplicator
     {
+        const string LogTag = "Deeplicate";
         const string MenuItemName = "Assets/Deeplicate %#d";
 
         struct CopyAssetPathPair
@@ -65,6 +66,15 @@ namespace OhanaYa
 
                 foreach (var copiedAssetPath in copiedAssetPaths)
                 {
+                    if (copiedAssetPath.EndsWith(".unity"))
+                    {
+                        Debug.unityLogger.LogWarning(
+                            LogTag,
+                            $"{copiedAssetPath} has been sharrow copied (SceneAsset is not supported).",
+                            AssetDatabase.LoadAssetAtPath<SceneAsset>(copiedAssetPath));
+                        continue;
+                    }
+
                     var copiedSerializedObjects = AssetDatabase
                         .LoadAllAssetsAtPath(copiedAssetPath)
                         .Where(x => x != null) // Ignore broken assets.
@@ -272,7 +282,7 @@ namespace OhanaYa
                                             // Other assets.
 
                                             // TODO
-                                            Debug.LogWarning($"Ambiguous {objectReference.GetType().FullName} is not supported.");
+                                            Debug.unityLogger.LogWarning(LogTag, $"Ambiguous {objectReference.GetType().FullName} is not supported.");
                                         }
                                     }
                                 }
