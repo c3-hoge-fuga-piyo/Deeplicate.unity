@@ -135,11 +135,31 @@ namespace OhanaYa
                                 continue;
                             }
 
+#if UNITY_2018_3_OR_NEWER
+                            // Nested Prefabs
+                            var isPrefabReference = targetProperty.type == "PPtr<Prefab>";
+                            if (isPrefabReference)
+                            {
+                                var pptr = new SerializedObject(targetProperty.objectReferenceValue);
+                                var m_RootGameObject = pptr.FindProperty("m_RootGameObject");
+                                Assert.IsNotNull(m_RootGameObject);
+                                Assert.AreEqual(m_RootGameObject.propertyType, SerializedPropertyType.ObjectReference);
+                                Assert.IsNotNull(m_RootGameObject.objectReferenceValue);
+                                objectReference = m_RootGameObject.objectReferenceValue;
+                            }
+#endif
+
                             var isMainAsset = AssetDatabase.IsMainAsset(objectReference);
 
                             if (isMainAsset)
                             {
-                                targetProperty.objectReferenceValue = destinationAsset;
+                                targetProperty.objectReferenceValue =
+#if UNITY_2018_3_OR_NEWER
+                                     isPrefabReference
+                                        //FIXME: GetPrefabObject is obsolete.
+                                        ? PrefabUtility.GetPrefabObject(destinationAsset) :
+#endif
+                                        destinationAsset;
                             }
                             else
                             {
