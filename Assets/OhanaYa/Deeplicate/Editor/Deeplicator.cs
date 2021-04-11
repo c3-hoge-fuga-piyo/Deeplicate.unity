@@ -156,8 +156,10 @@ namespace OhanaYa
                                 targetProperty.objectReferenceValue =
 #if UNITY_2018_3_OR_NEWER
                                      isPrefabReference
+#pragma warning disable 0618
                                         //FIXME: GetPrefabObject is obsolete.
                                         ? PrefabUtility.GetPrefabObject(destinationAsset) :
+#pragma warning restore 0618
 #endif
                                         destinationAsset;
                             }
