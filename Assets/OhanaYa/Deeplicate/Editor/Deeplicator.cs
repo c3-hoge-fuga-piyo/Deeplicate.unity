@@ -77,13 +77,15 @@ namespace OhanaYa
                         // Include HideInInspector properties.
                         while (iterator.Next(enterChildren: true))
                         {
-                            var propertyType = iterator.propertyType;
+                            var targetProperty = iterator;
+
+                            var propertyType = targetProperty.propertyType;
                             if (propertyType != SerializedPropertyType.ObjectReference)
                             {
                                 continue;
                             }
 
-                            var objectReference = iterator.objectReferenceValue;
+                            var objectReference = targetProperty.objectReferenceValue;
                             if (objectReference == null)
                             {
                                 continue;
@@ -133,11 +135,33 @@ namespace OhanaYa
                                 continue;
                             }
 
+#if UNITY_2018_3_OR_NEWER
+                            // Nested Prefabs
+                            var isPrefabReference = targetProperty.type == "PPtr<Prefab>";
+                            if (isPrefabReference)
+                            {
+                                var pptr = new SerializedObject(targetProperty.objectReferenceValue);
+                                var m_RootGameObject = pptr.FindProperty("m_RootGameObject");
+                                Assert.IsNotNull(m_RootGameObject);
+                                Assert.AreEqual(m_RootGameObject.propertyType, SerializedPropertyType.ObjectReference);
+                                Assert.IsNotNull(m_RootGameObject.objectReferenceValue);
+                                objectReference = m_RootGameObject.objectReferenceValue;
+                            }
+#endif
+
                             var isMainAsset = AssetDatabase.IsMainAsset(objectReference);
 
                             if (isMainAsset)
                             {
-                                iterator.objectReferenceValue = destinationAsset;
+                                targetProperty.objectReferenceValue =
+#if UNITY_2018_3_OR_NEWER
+                                     isPrefabReference
+#pragma warning disable 0618
+                                        //FIXME: GetPrefabObject is obsolete.
+                                        ? PrefabUtility.GetPrefabObject(destinationAsset) :
+#pragma warning restore 0618
+#endif
+                                        destinationAsset;
                             }
                             else
                             {
@@ -154,7 +178,7 @@ namespace OhanaYa
                                 Assert.IsTrue(nameMatchCount > 0);
                                 if (nameMatchCount == 1)
                                 {
-                                    iterator.objectReferenceValue = nameMatches.First();
+                                    targetProperty.objectReferenceValue = nameMatches.First();
                                 }
                                 else
                                 {
@@ -193,7 +217,7 @@ namespace OhanaYa
                                     Assert.IsTrue(fullNameMatchCount > 0);
                                     if (fullNameMatchCount == 1)
                                     {
-                                        iterator.objectReferenceValue = fullNameMatches.First().asset;
+                                        targetProperty.objectReferenceValue = fullNameMatches.First().asset;
                                     }
                                     else
                                     {
@@ -215,7 +239,7 @@ namespace OhanaYa
                                                     .SequenceEqual(sourceSiblingIndices));
                                             Assert.IsNotNull(destinationGameObject);
 
-                                            iterator.objectReferenceValue = destinationGameObject;
+                                            targetProperty.objectReferenceValue = destinationGameObject;
                                         }
                                         else if (objectReference is Component)
                                         {
@@ -241,13 +265,14 @@ namespace OhanaYa
                                             var destinationComponent = destinationGameObject.GetComponents(sourceType)[sourceComponentIndex];
                                             Assert.IsNotNull(destinationComponent);
 
-                                            iterator.objectReferenceValue = destinationComponent;
+                                            targetProperty.objectReferenceValue = destinationComponent;
                                         }
                                         else
                                         {
                                             // Other assets.
 
                                             // TODO
+                                            Debug.LogWarning($"Ambiguous {objectReference.GetType().FullName} is not supported.");
                                         }
                                     }
                                 }
